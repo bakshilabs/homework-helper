@@ -100,7 +100,8 @@ def request(url, data=None, dest=None, tries=6):
                 _remaining = 0
                 _reset_ms = int(e.headers.get("x-ratelimit-reset") or (time.time() + 600) * 1000)
                 continue
-            if e.code in (400, 401, 403, 404):
+            # 400 is retried: Oak's video host returns it intermittently.
+            if e.code in (401, 403, 404):
                 raise
             log(f"HTTP {e.code} on {url}; retry {attempt+1}")
         except Exception as e:  # network hiccup
