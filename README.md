@@ -18,10 +18,11 @@ Open http://localhost:8000 in Chrome or Safari and allow the microphone.
 
 ## Lesson data
 
-`data/year4-lessons.json` is built from the organised Oak download:
+`data/year4-lessons.json` is built from the organised Oak download. It holds Year 4 plus Years 3 and 5, because schools teach some topics in a different year from Oak; Year 4 lessons rank first.
 
 ```bash
-python3 scripts/build_lesson_index.py ~/Downloads/oak-full/oak-by-year "Key Stage 2/Year 4" data/year4-lessons.json
+python3 scripts/build_lesson_index.py ~/Downloads/oak-full/oak-by-year data/year4-lessons.json \
+  "Key Stage 2/Year 4" "Key Stage 2/Year 3" "Key Stage 2/Year 5"
 ```
 
 Oak content is used under the Open Government Licence; the app credits the lessons it uses.

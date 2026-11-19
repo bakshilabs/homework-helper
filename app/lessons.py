@@ -13,6 +13,10 @@ WEIGHTS = {"title": 4, "keywords": 3, "outcome": 3, "unit": 2, "learningPoints":
            "quiz": 1.5, "misconceptions": 1, "transcript": 0.3}
 
 
+# Lessons from the child's own year rank ahead of neighbouring years unless those match clearly better.
+MAIN_YEAR_BOOST = 1.5
+
+
 def tokens(text):
     out = []
     for w in re.findall(r"[a-z0-9]+", (text or "").lower()):
@@ -77,6 +81,8 @@ class LessonIndex:
                 if f:
                     s += self.idf[t] * f * (k1 + 1) / (f + norm)
             if s > 0:
+                if l.get("year") != self.year:
+                    s /= MAIN_YEAR_BOOST
                 scored.append((s, l))
         scored.sort(key=lambda x: -x[0])
         return [l for _, l in scored[:k]]
@@ -84,7 +90,8 @@ class LessonIndex:
 
 def lesson_brief(l, quiz_items=4):
     """Compact text of one lesson for Claude's context (no transcript)."""
-    lines = [f"## {l['subject']} - {l['unit']} - {l['title']}",
+    year = l.get("year", "")
+    lines = [f"## {l['subject']} - {l['unit']} - {l['title']} ({year})",
              f"Lesson goal: {l.get('outcome') or ''}"]
     if l["keywords"]:
         lines.append("Keywords: " + "; ".join(f"{k['word']}: {k.get('meaning') or ''}" for k in l["keywords"]))
