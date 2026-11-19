@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oakley homework helper</title>
+<style>
+  :root { --bg:#fffaf2; --ink:#1f2a37; --muted:#6b7280; --brand:#1f7a5c; --brand2:#e8f5ef; --me:#fff1d6; --line:#eadfcd; --rec:#d64545; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:18px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:16px; min-height:100vh; display:flex; flex-direction:column; gap:14px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  h1 { font-size:24px; margin:0; } h1 small { display:block; font-size:15px; font-weight:400; color:var(--muted); }
+  button { font:inherit; cursor:pointer; border-radius:999px; border:2px solid var(--line); background:#fff; color:var(--ink); padding:8px 16px; }
+  .subjects { display:flex; flex-wrap:wrap; gap:8px; }
+  .subjects button.on { background:var(--brand); border-color:var(--brand); color:#fff; }
+  #chat { flex:1; display:flex; flex-direction:column; gap:10px; overflow-y:auto; padding:4px 0; }
+  .msg { max-width:85%; padding:10px 14px; border-radius:18px; white-space:pre-wrap; }
+  .me { align-self:flex-end; background:var(--me); border-bottom-right-radius:4px; }
+  .bot { align-self:flex-start; background:var(--brand2); border-bottom-left-radius:4px; }
+  .msg img { display:block; max-width:220px; border-radius:10px; margin-bottom:6px; }
+  .hint { color:var(--muted); text-align:center; }
+  .controls { display:flex; align-items:center; justify-content:center; gap:16px; padding:8px 0; }
+  #talk { width:96px; height:96px; border-radius:50%; border:none; background:var(--brand); color:#fff; font-size:16px; font-weight:600; box-shadow:0 4px 14px rgb(0 0 0 / .15); }
+  #talk.listening { background:var(--rec); animation:pulse 1s infinite; }
+  #talk:disabled { opacity:.5; }
+  @keyframes pulse { 50% { transform:scale(1.06); } }
+  .side { width:56px; height:56px; padding:0; border-radius:50%; font-size:24px; }
+  #heard { min-height:1.5em; text-align:center; color:var(--muted); }
+  form { display:flex; gap:8px; } form input { flex:1; font:inherit; padding:10px 14px; border-radius:999px; border:2px solid var(--line); }
+  #photoPreview { text-align:center; } #photoPreview img { max-height:90px; border-radius:8px; vertical-align:middle; }
+  footer { font-size:13px; color:var(--muted); } footer a { color:inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Oakley <small>Year 4 homework helper</small></h1>
+    <button id="reset" title="Start a new question">Start again</button>
+  </header>
+  <div class="subjects" id="subjects" aria-label="Choose your subject"></div>
+  <div id="chat" aria-live="polite">
+    <p class="hint">Pick your subject, then press <b>Talk</b> and tell me about your homework question.<br>You can also take a photo of it with 📷.</p>
+  </div>
+  <div id="photoPreview"></div>
+  <div id="heard"></div>
+  <div class="controls">
+    <button class="side" id="photoBtn" title="Take a photo of your homework">📷</button>
+    <button id="talk">Talk</button>
+    <button class="side" id="muteBtn" title="Turn Oakley's voice on or off">🔊</button>
+  </div>
+  <form id="typeForm"><input id="typed" placeholder="Or type here…" autocomplete="off"><button>Send</button></form>
+  <input type="file" id="photo" accept="image/*" capture="environment" hidden>
+  <footer id="credits">Explanations use lessons from <a href="https://www.thenational.academy" target="_blank" rel="noopener">Oak National Academy</a>.</footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let session = null, subject = null, photo = null, busy = false, muted = false;
+
+// ---------- setup ----------
+fetch("/api/config").then(r => r.json()).then(cfg => {
+  session = cfg.session;
+  for (const s of cfg.subjects) {
+    const b = document.createElement("button");
+    b.textContent = s;
+    b.onclick = () => { subject = s; document.querySelectorAll(".subjects button").forEach(x => x.classList.toggle("on", x === b)); };
+    $("subjects").appendChild(b);
+  }
+});
+
+function addMsg(who, text, img) {
+  const hint = document.querySelector(".hint"); if (hint) hint.remove();
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  if (img) { const i = new Image(); i.src = "data:image/jpeg;base64," + img; d.appendChild(i); }
+  d.appendChild(document.createTextNode(text));
+  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
+  return d;
+}
+
+// ---------- speaking (text to speech) ----------
+const synth = window.speechSynthesis;
+let voice = null;
+function pickVoice() {
+  const vs = synth ? synth.getVoices() : [];
+  voice = vs.find(v => v.lang === "en-GB" && /natural|premium|enhanced|google/i.test(v.name))
+       || vs.find(v => v.lang === "en-GB") || vs.find(v => v.lang.startsWith("en")) || null;
+}
+if (synth) { pickVoice(); synth.onvoiceschanged = pickVoice; }
+function speak(text) {
+  if (muted || !synth || !text.trim()) return;
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice) u.voice = voice;
+  u.lang = "en-GB"; u.rate = 0.95;
+  synth.speak(u);
+}
+function stopSpeaking() { if (synth) synth.cancel(); }
+$("muteBtn").onclick = () => { muted = !muted; $("muteBtn").textContent = muted ? "🔇" : "🔊"; if (muted) stopSpeaking(); };
+
+// ---------- listening (speech to text) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, finalText = "";
+if (!SR) { $("talk").disabled = true; $("heard").textContent = "Voice input isn't available in this browser. Try Chrome or Safari, or type below."; }
+$("talk").onclick = () => {
+  if (synth && !synth.speaking) synth.speak(new SpeechSynthesisUtterance("")); // unlock audio on iPhone/iPad
+  stopSpeaking();
+  if (listening) { rec.stop(); return; }
+  if (busy) return;
+  rec = new SR();
+  rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = false;
+  finalText = "";
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) finalText += e.results[i][0].transcript; else interim += e.results[i][0].transcript;
+    }
+    $("heard").textContent = finalText + interim;
+  };
+  rec.onerror = (e) => { $("heard").textContent = e.error === "not-allowed" ? "Please allow the microphone so I can hear you." : ""; };
+  rec.onend = () => {
+    listening = false; $("talk").classList.remove("listening"); $("talk").textContent = "Talk";
+    const t = finalText.trim(); $("heard").textContent = "";
+    if (t || photo) send(t);
+  };
+  rec.start(); listening = true;
+  $("talk").classList.add("listening"); $("talk").textContent = "Listening…";
+};
+
+// ---------- typing ----------
+$("typeForm").onsubmit = (e) => {
+  e.preventDefault();
+  const t = $("typed").value.trim();
+  if (!t && !photo) return;
+  $("typed").value = ""; stopSpeaking(); send(t);
+};
+
+// ---------- photo ----------
+$("photoBtn").onclick = () => $("photo").click();
+$("photo").onchange = async () => {
+  const f = $("photo").files[0]; if (!f) return;
+  const img = await createImageBitmap(f);
+  const scale = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  photo = c.toDataURL("image/jpeg", 0.85).split(",")[1];
+  $("photoPreview").innerHTML = "";
+  const i = new Image(); i.src = "data:image/jpeg;base64," + photo; $("photoPreview").append(i, " Photo ready. Now press Talk or type.");
+  $("photo").value = "";
+};
+
+// ---------- conversation ----------
+async function send(text) {
+  if (busy || !session) return;
+  busy = true; $("talk").disabled = true;
+  const img = photo; photo = null; $("photoPreview").innerHTML = "";
+  addMsg("me", text || "(photo)", img);
+  const bubble = addMsg("bot", "…");
+  let full = "", pending = "";
+  const flushSentences = (force) => {
+    const re = /[^.!?]*[.!?]+["')\]]*\s+/g; let m, last = 0;
+    while ((m = re.exec(pending))) { speak(m[0]); last = re.lastIndex; }
+    pending = pending.slice(last);
+    if (force) { speak(pending); pending = ""; }
+  };
+  try {
+    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session, subject, text, image: img }) });
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!line.startsWith("data: ")) continue;
+        const ev = JSON.parse(line.slice(6));
+        if (ev.type === "text" || ev.type === "error") {
+          full += ev.text; pending += ev.text; bubble.textContent = full.trim() || "…";
+          $("chat").scrollTop = $("chat").scrollHeight; flushSentences(false);
+        } else if (ev.type === "lessons") {
+          $("credits").innerHTML = "Explanations use lessons from Oak National Academy: " +
+            ev.items.map(l => `<a href="${l.url}" target="_blank" rel="noopener">${l.title.replace(/</g, "&lt;")}</a>`).join(", ");
+        }
+      }
+    }
+    flushSentences(true);
+  } catch (err) {
+    bubble.textContent = "Sorry, I lost my connection. Can you try again?";
+  } finally {
+    busy = false; if (SR) $("talk").disabled = false;
+  }
+}
+
+$("reset").onclick = async () => {
+  stopSpeaking();
+  if (session) await fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session }) });
+  session = (await (await fetch("/api/config")).json()).session;
+  $("chat").innerHTML = '<p class="hint">New question! Press <b>Talk</b> and tell me about it.</p>';
+};
+</script>
+</body>
+</html>
