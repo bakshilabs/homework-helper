@@ -49,6 +49,7 @@ class LessonIndex:
         self.lessons = data["lessons"]
         self.by_slug = {l["slug"]: l for l in self.lessons}
         self.subjects = sorted({l["subject"] for l in self.lessons})
+        self.title_tokens = [set(tokens(l["title"])) for l in self.lessons]
         self.doc_tf = []
         df = Counter()
         lengths = []
@@ -81,6 +82,8 @@ class LessonIndex:
                 if f:
                     s += self.idf[t] * f * (k1 + 1) / (f + norm)
             if s > 0:
+                # Bonus when the question's words are in the lesson title ("equivalent fractions").
+                s *= 1 + sum(t in self.title_tokens[i] for t in set(q)) / len(set(q))
                 if l.get("year") != self.year:
                     s /= MAIN_YEAR_BOOST
                 scored.append((s, l))
