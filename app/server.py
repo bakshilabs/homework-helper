@@ -32,6 +32,8 @@ load_env()
 INDEX = LessonIndex(os.environ.get("LESSON_INDEX", os.path.join(HERE, "..", "data", "year4-lessons.json")))
 MODEL = os.environ.get("HELPER_MODEL", "claude-opus-5-5")
 EFFORT = os.environ.get("HELPER_EFFORT", "low")
+if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
+    sys.exit("No Anthropic API key. Put ANTHROPIC_API_KEY=... in app/.env (see README).")
 client = anthropic.Anthropic()
 
 SYSTEM = f"""You are Oakley, a friendly homework helper for children in Year 4 in England (age 8 to 9).
@@ -154,9 +156,9 @@ def run_turn(session, subject, text, image_b64, send):
                     send({"type": "lessons", "items": [{"title": l["title"], "year": l["year"], "url": l["url"]} for l in hits]})
             messages.append({"role": "user", "content": results})
             send({"type": "text", "text": " "})
-    except anthropic.APIError as e:
+    except Exception as e:  # keep the child's conversation usable whatever went wrong
         del messages[start_len:]
-        print(f"API error: {e}", file=sys.stderr)
+        print(f"error: {type(e).__name__}: {e}", file=sys.stderr)
         send({"type": "error", "text": "Sorry, I couldn't think just then. Can you say that again?"})
 
 
